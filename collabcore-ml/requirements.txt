@@ -1,0 +1,23 @@
+# Core ML Libraries
+sentence-transformers>=2.7.0
+pinecone>=3.0.0
+
+# FastAPI Integration (for later)
+fastapi>=0.109.0
+uvicorn>=0.25.0
+python-dotenv>=1.0.0
+
+# Data Processing
+numpy>=1.26.0
+pandas>=2.1.0
+
+# Utilities
+pydantic>=2.5.0
+typing-extensions>=4.9.0
+
+# Development & Testing
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+
+# Python 3.12 compatibility
+setuptools>=68.0.0
