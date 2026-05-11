@@ -260,7 +260,7 @@ const ManageApplicationsPage = () => {
                     </span>
                   </div>
 
-                  {/* Skills */}}
+                  {/* Skills */}
                   <div className="mb-4">
                     <div className="flex flex-wrap gap-2">
                       {(app.user?.skills || []).slice(0, 3).map((skill, index) => (

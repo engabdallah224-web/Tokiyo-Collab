@@ -2750,6 +2750,37 @@ async def create_instant_call(
 
 # ============ FILE UPLOAD (CLOUDINARY) ============
 
+@app.post("/api/upload/profile")
+async def upload_profile_image(
+    file: UploadFile = FastAPIFile(...),
+    token_data: dict = Depends(verify_token)
+):
+    """Upload a user profile or banner image to Cloudinary"""
+    try:
+        if not CLOUDINARY_ENABLED:
+            raise HTTPException(status_code=503, detail="Cloudinary not configured")
+        
+        user_id = token_data["uid"]
+        file_content = await file.read()
+        
+        # 10MB limit
+        if len(file_content) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
+
+        # Upload to Cloudinary in a specific user folder
+        upload_result = cloudinary.uploader.upload(
+            file_content,
+            folder=f"users/{user_id}",
+            resource_type="auto"
+        )
+        
+        return {
+            "url": upload_result['secure_url'],
+            "cloudinary_id": upload_result['public_id']
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/upload/file")
 async def upload_file(
     file: UploadFile = FastAPIFile(...),

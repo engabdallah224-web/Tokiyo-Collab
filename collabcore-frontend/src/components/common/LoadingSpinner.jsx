@@ -15,22 +15,19 @@ const LoadingSpinner = ({ size = 'default', className = '', light = false }) => 
   };
 
   return (
-    <div className={`flex flex-col items-center justify-center ${className}`}>
-      <div className="relative">
-        {/* Professional, static logo container */}
-        <div className={`relative bg-red-600 ${containerSizes[size]} rounded-2xl shadow-sm z-10 border border-red-500/10`}>
-          <Users className={`${sizeClasses[size]} text-white`} />
-        </div>
-
-        {/* High-end thin spinning ring - perfectly centered, doesn't touch logo */}
+    <div className={`flex items-center justify-center ${className}`}>
+      <div className="relative flex items-center justify-center">
+        {/* Sleek minimalist high-speed spinner */}
         <motion.div
-          className="absolute inset-0 rounded-2xl border-[1.5px] border-transparent border-t-red-600/60"
+          className={`rounded-full border-2 border-red-600/20 border-t-red-600 ${sizeClasses[size]}`}
           animate={{ rotate: 360 }}
-          transition={{ duration: 0.7, repeat: Infinity, ease: "linear" }}
-          style={{ 
-            margin: '-6px',
-            padding: '-6px'
-          }}
+          transition={{ duration: 0.4, repeat: Infinity, ease: "linear" }}
+        />
+        {/* Subtle inner pulse for depth */}
+        <motion.div
+          className={`absolute rounded-full bg-red-600/10 ${sizeClasses[size]}`}
+          animate={{ scale: [0.8, 1.4, 0.8], opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
         />
       </div>
     </div>

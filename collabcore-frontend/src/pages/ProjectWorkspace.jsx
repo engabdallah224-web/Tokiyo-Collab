@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createTaskInFirestore } from '../services/firestoreService';
-// motion removed for snappy dynamic UI
 import { MessageSquare, Send, Paperclip, Smile, Users, BarChart, Settings, Video, Phone, ArrowLeft, CheckSquare, TrendingUp, X, GitBranch, FileText, Sparkles, Crown, Clock, Image as ImageIcon, File, Download, Plus, UserMinus, ChevronLeft } from 'lucide-react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -666,68 +665,48 @@ const ProjectWorkspace = () => {
                 />
                 
                 <div className="absolute right-3 bottom-3 flex items-center space-x-2">
-                  <motion.button
+                  <button
                     type="button"
                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                     className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-gray-100"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
                   >
                     <Smile className="h-5 w-5" />
-                  </motion.button>
-                  <motion.button
+                  </button>
+                  <button
                     type="button"
                     onClick={() => setShowFileModal(true)}
                     className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-gray-100"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
                   >
                     <Paperclip className="h-5 w-5" />
-                  </motion.button>
+                  </button>
                 </div>
               </div>
 
-              <motion.button
+              <button
                 type="submit"
                 disabled={sendMessageMutation.isPending || !message.trim()}
                 className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                whileHover={{ scale: message.trim() ? 1.05 : 1 }}
-                whileTap={{ scale: message.trim() ? 0.95 : 1 }}
               >
                 <Send className="h-5 w-5" />
-              </motion.button>
+              </button>
             </form>
 
-            {/* Emoji Picker */}
-            <AnimatePresence>
-              {showEmojiPicker && (
-                <motion.div
+            {showEmojiPicker && (
+                <div
                   ref={emojiPickerRef}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
                   className="absolute bottom-20 right-4 z-50 shadow-2xl"
                 >
                   <EmojiPicker onEmojiClick={handleEmojiClick} theme="light" />
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
           </div>
 
-          {/* File Upload Modal */}
-          <AnimatePresence>
-            {showFileModal && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+          {showFileModal && (
+              <div
                 className="fixed inset-0 bg-gray-900 bg-opacity-20 backdrop-blur-sm flex items-center justify-center z-50 p-4"
                 onClick={() => setShowFileModal(false)}
               >
-                <motion.div
-                  initial={{ scale: 0.95 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0.95 }}
+                <div
                   onClick={(e) => e.stopPropagation()}
                   className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
                 >
@@ -992,20 +971,14 @@ const ProjectWorkspace = () => {
                       </button>
                     </div>
                   </div>
-                </motion.div>
-              </motion.div>
+                </div>
+              </div>
             )}
-          </AnimatePresence>
         </div>
 
         {/* Drawer */}
-        <AnimatePresence>
           {activeDrawer && (
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            <div
               className="w-[500px] bg-white border-l border-gray-200 flex flex-col shadow-lg"
             >
               {/* Drawer Header */}
@@ -1049,40 +1022,59 @@ const ProjectWorkspace = () => {
                       </>
                     )}
                   </h3>
-                  <motion.button
+                  <button
                     onClick={() => setActiveDrawer(null)}
                     className="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
                   >
                     <X className="h-5 w-5" />
-                  </motion.button>
+                  </button>
                 </div>
               </div>
 
               {/* Drawer Content */}
               <div className="flex-1 overflow-y-auto bg-[#f3f3f3]">
                 {activeDrawer === 'tasks' && (
-                  <div className="p-6">
-                    <div className="text-center py-12 bg-white rounded-2xl shadow-sm border border-gray-100">
-                      <div className="h-20 w-20 mx-auto mb-4 rounded-2xl bg-red-100 flex items-center justify-center">
-                        <CheckSquare className="h-10 w-10 text-red-600" />
+                  <div className="p-6 space-y-4">
+                    {/* Manage Tasks Button — always visible */}
+                    <button
+                      onClick={() => navigate(`/projects/${projectId}/tasks`)}
+                      className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 hover:shadow-lg transition-all"
+                    >
+                      <CheckSquare className="h-4 w-4" />
+                      Manage Tasks
+                    </button>
+
+                    {tasksData && tasksData.length > 0 ? (
+                      <div className="space-y-3">
+                        {tasksData.map((task) => (
+                          <div key={task.id} className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-all">
+                            <div className="flex items-center justify-between mb-1">
+                              <h4 className="font-semibold text-gray-900 text-sm">{task.title}</h4>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${task.priority === 'low' ? 'bg-green-100 text-green-800' : task.priority === 'high' || task.priority === 'urgent' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {task.priority}
+                              </span>
+                            </div>
+                            {task.description && (
+                              <p className="text-gray-500 text-xs line-clamp-2">{task.description}</p>
+                            )}
+                            <div className="mt-2">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${task.status === 'done' ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200' : task.status === 'in_progress' ? 'bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200' : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${task.status === 'done' ? 'bg-emerald-500' : task.status === 'in_progress' ? 'bg-indigo-500' : 'bg-slate-400'}`} />
+                                {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'To Do'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                        No tasks yet
-                      </h4>
-                      <p className="text-gray-600 text-sm mb-6">
-                        Create and manage project tasks to track progress
-                      </p>
-                      <motion.button
-                        onClick={() => navigate(`/projects/${projectId}/tasks`)}
-                        className="px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 hover:shadow-md transition-all"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        Manage Tasks
-                      </motion.button>
-                    </div>
+                    ) : (
+                      <div className="text-center py-10 bg-white rounded-2xl shadow-sm border border-gray-100">
+                        <div className="h-16 w-16 mx-auto mb-3 rounded-2xl bg-red-50 flex items-center justify-center">
+                          <CheckSquare className="h-8 w-8 text-red-400" />
+                        </div>
+                        <h4 className="text-base font-semibold text-gray-800 mb-1">No tasks yet</h4>
+                        <p className="text-gray-500 text-sm">Click "Manage Tasks" to create your first task.</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1107,11 +1099,9 @@ const ProjectWorkspace = () => {
 
                 {activeDrawer === 'settings' && (
                   <div className="p-6 space-y-4">
-                    <motion.button
+                    <button
                       onClick={() => navigate(`/projects/${projectId}/settings`)}
                       className="w-full p-4 rounded-xl bg-white border border-gray-200 hover:shadow-md transition-all"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
                     >
                       <div className="flex items-center space-x-4">
                         <div className="p-3 bg-red-100 rounded-xl">
@@ -1122,13 +1112,11 @@ const ProjectWorkspace = () => {
                           <div className="text-sm text-gray-600">Configure project details</div>
                         </div>
                       </div>
-                    </motion.button>
+                    </button>
 
-                    <motion.button
+                    <button
                       onClick={() => navigate(`/projects/${projectId}/analytics`)}
                       className="w-full p-4 rounded-xl bg-white border border-gray-200 hover:shadow-md transition-all"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
                     >
                       <div className="flex items-center space-x-4">
                         <div className="p-3 bg-red-100 rounded-xl">
@@ -1139,15 +1127,13 @@ const ProjectWorkspace = () => {
                           <div className="text-sm text-gray-600">View detailed insights</div>
                         </div>
                       </div>
-                    </motion.button>
+                    </button>
                   </div>
                 )}
 
                 {activeDrawer === 'stats' && (
                   <div className="p-6 space-y-4">
-                    <motion.div 
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
+                    <div 
                       className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm"
                     >
                       <div className="flex justify-between items-center mb-4">
@@ -1157,22 +1143,17 @@ const ProjectWorkspace = () => {
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-3">
-                        <motion.div
+                        <div
                           className="bg-red-600 h-3 rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${((projectData.current_team_size || 1) / (projectData.team_size_limit || 5)) * 100}%` }}
-                          transition={{ duration: 1, ease: "easeOut" }}
+                          style={{ width: `${((projectData.current_team_size || 1) / (projectData.team_size_limit || 5)) * 100}%` }}
                         />
                       </div>
                       <p className="text-sm text-gray-600 mt-3">
                         {projectData.team_size_limit - (projectData.current_team_size || 1)} spots remaining
                       </p>
-                    </motion.div>
+                    </div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 }}
+                    <div
                       className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm"
                     >
                       <div className="flex justify-between items-center">
@@ -1181,12 +1162,9 @@ const ProjectWorkspace = () => {
                           {projectData.status}
                         </span>
                       </div>
-                    </motion.div>
+                    </div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 }}
+                    <div
                       className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm"
                     >
                       <div className="flex justify-between items-center">
@@ -1195,13 +1173,12 @@ const ProjectWorkspace = () => {
                           {projectData.category}
                         </span>
                       </div>
-                    </motion.div>
+                    </div>
                   </div>
                 )}
               </div>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
       </div>
     </div>
   );

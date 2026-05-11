@@ -8,29 +8,25 @@ import { doc, setDoc } from 'firebase/firestore';
 import { auth } from '../config/firebase';
 import { db } from '../config/firebase';
 import { authAPI, uploadAPI, userAPI } from '../services/api';
-import { fetchUserProfile } from '../services/firestoreService';
+import { fetchUserProfile, uploadUserProfileImage, deleteUserProfileImage } from '../services/firestoreService';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { Trash2 } from 'lucide-react';
 
 const EditProfilePage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user: authUser } = useAuth();
 
-  // Fetch current user data — falls back to Firestore when backend is offline
+  // Fetch current user data
   const { data: userData, isLoading } = useQuery({
     queryKey: ['current-user'],
     queryFn: async () => {
-      try {
-        const response = await authAPI.getMe();
-        return response.data;
-      } catch (err) {
-        if (!err.response && authUser?.uid) {
-          const profile = await fetchUserProfile(authUser.uid);
-          if (profile) return { user: profile };
-        }
-        throw err;
+      if (authUser?.uid) {
+        const profile = await fetchUserProfile(authUser.uid);
+        if (profile) return { user: profile };
       }
+      return null;
     },
     retry: 1,
   });
@@ -42,7 +38,8 @@ const EditProfilePage = () => {
     bio: '',
     skills: [],
     avatar_url: '',
-    banner_url: ''
+    banner_url: '',
+    university: ''
   });
 
   const [newSkill, setNewSkill] = useState('');
@@ -63,7 +60,7 @@ const EditProfilePage = () => {
   }, []);
 
   // Update form when user data loads
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       setFormData({
         full_name: user.full_name || '',
@@ -80,33 +77,27 @@ const EditProfilePage = () => {
   // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (data) => {
-      if (!user?.uid) throw new Error('User not found');
-      try {
-        const response = await userAPI.updateUser(user.uid, data);
-        return response.data.user;
-      } catch (error) {
-        if (!error.response) {
-          await setDoc(
-            doc(db, 'users', user.uid),
-            {
-              ...data,
-              uid: user.uid,
-              email: user.email || auth.currentUser?.email || '',
-              updated_at: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-          return { ...data, uid: user.uid };
-        }
-        throw error;
-      }
+      if (!authUser?.uid) throw new Error('User not found');
+      
+      // Update Firestore
+      await setDoc(
+        doc(db, 'users', authUser.uid),
+        {
+          ...data,
+          uid: authUser.uid,
+          email: authUser.email || auth.currentUser?.email || '',
+          updated_at: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      return { ...data, uid: authUser.uid };
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['current-user']);
       navigate('/profile');
     },
     onError: (error) => {
-      alert(error.response?.data?.detail || error.message || 'Failed to update profile');
+      alert(error.message || 'Failed to update profile');
     }
   });
 
@@ -132,46 +123,37 @@ const EditProfilePage = () => {
     }));
   };
 
-  const readFileAsDataUrl = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
-
   const handleImageSelect = async (field, file) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
+    if (!file || !user?.uid) return;
+    
+    setUploadingField(field);
+    try {
+      const type = field === 'avatar_url' ? 'profile' : 'banner';
+      const downloadURL = await uploadUserProfileImage(user.uid, file, type);
+      setFormData(prev => ({ ...prev, [field]: downloadURL }));
+      queryClient.invalidateQueries(['current-user']);
+    } catch (err) {
+      console.error('Upload error:', err);
+      alert(`Failed to upload image: ${err.message || 'Unknown error'}. Please check your Firebase Storage Rules.`);
+    } finally {
+      setUploadingField('');
     }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image must be 5MB or smaller');
-      return;
-    }
+  };
+
+  const handleImageDelete = async (field) => {
+    if (!user?.uid) return;
+    
+    const confirmDelete = window.confirm('Are you sure you want to remove this photo?');
+    if (!confirmDelete) return;
 
     setUploadingField(field);
     try {
-      // Try backend/cloud upload first
-      const uploadResponse = await uploadAPI.uploadFile(file, `profile-${user?.uid || 'user'}`);
-      const url =
-        uploadResponse?.data?.file_url ||
-        uploadResponse?.data?.secure_url ||
-        uploadResponse?.data?.url;
-
-      if (url) {
-        setFormData((prev) => ({ ...prev, [field]: url }));
-        return;
-      }
-
-      // If API response has no URL, fall back to local data URL
-      const dataUrl = await readFileAsDataUrl(file);
-      setFormData((prev) => ({ ...prev, [field]: dataUrl }));
-    } catch {
-      // Backend unavailable on Vercel/mobile: keep working with local data URL
-      const dataUrl = await readFileAsDataUrl(file);
-      setFormData((prev) => ({ ...prev, [field]: dataUrl }));
+      const type = field === 'avatar_url' ? 'profile' : 'banner';
+      await deleteUserProfileImage(user.uid, type);
+      setFormData(prev => ({ ...prev, [field]: '' }));
+      queryClient.invalidateQueries(['current-user']);
+    } catch (err) {
+      alert('Failed to remove image.');
     } finally {
       setUploadingField('');
     }
@@ -218,83 +200,89 @@ const EditProfilePage = () => {
             </h2>
             
             {/* Banner Image */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <div className="mb-10">
+              <label className="block text-sm font-bold text-gray-700 mb-3">
                 Cover/Banner Image
               </label>
-              <div className="mb-3">
-                <div className="h-40 w-full rounded-xl overflow-hidden bg-red-600">
+              <div className="relative group overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 hover:border-red-400 transition-all">
+                <div className="h-48 w-full bg-gray-50 flex items-center justify-center overflow-hidden">
                   {formData.banner_url ? (
-                    <img 
-                      src={formData.banner_url} 
-                      alt="Cover" 
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={formData.banner_url} alt="Banner" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-white text-sm">
-                      No banner image
+                    <div className="text-center">
+                      <Camera className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-400 font-medium">No banner image uploaded</p>
                     </div>
                   )}
+                  
+                  {/* Overlay Controls */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                    <label className="bg-white text-black px-4 py-2 rounded-xl text-sm font-bold cursor-pointer hover:bg-red-600 hover:text-white transition-all shadow-lg flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      {uploadingField === 'banner_url' ? 'Uploading...' : 'Change Banner'}
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageSelect('banner_url', e.target.files?.[0])} />
+                    </label>
+                    {formData.banner_url && (
+                      <button type="button" onClick={() => handleImageDelete('banner_url')} className="bg-red-600 text-white p-2.5 rounded-xl hover:bg-red-700 transition-all shadow-lg">
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {uploadingField === 'banner_url' && (
+                  <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="h-10 w-10 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm font-bold text-red-600">Uploading Banner...</span>
+                    </div>
+                  </div>
+                )}
               </div>
-              <input
-                type="text"
-                name="banner_url"
-                value={formData.banner_url}
-                onChange={handleChange}
-                placeholder="https://example.com/banner.jpg"
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
-              />
-              <div className="mt-3 flex items-center gap-3">
-                <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 cursor-pointer transition-colors">
-                  <Upload className="h-4 w-4" />
-                  {uploadingField === 'banner_url' ? 'Uploading...' : 'Upload Banner'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleImageSelect('banner_url', e.target.files?.[0])}
-                  />
-                </label>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">Enter a URL for your cover/banner image (recommended: 1200x300px)</p>
+              <p className="text-xs text-gray-400 mt-3 font-medium italic">Recommended size: 1200x300px (Max 5MB)</p>
             </div>
 
             {/* Profile Picture */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Profile Picture
-              </label>
-              <div className="flex items-center gap-6">
-                <div className="h-32 w-32 rounded-2xl bg-red-600 flex items-center justify-center text-white text-4xl font-bold shadow-lg overflow-hidden flex-shrink-0">
+            <div className="flex flex-col sm:flex-row items-center gap-8">
+              <div className="relative group">
+                <div className="h-40 w-40 rounded-3xl bg-gray-100 border-4 border-white shadow-xl overflow-hidden flex items-center justify-center">
                   {formData.avatar_url ? (
                     <img src={formData.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                    formData.full_name?.charAt(0) || 'U'
+                    <User className="h-16 w-16 text-gray-300" />
                   )}
+                  
+                  {/* Upload Overlay */}
+                  <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer text-white text-xs font-bold gap-2">
+                    <Camera className="h-8 w-8" />
+                    <span>CHANGE PHOTO</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageSelect('avatar_url', e.target.files?.[0])} />
+                  </label>
                 </div>
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    name="avatar_url"
-                    value={formData.avatar_url}
-                    onChange={handleChange}
-                    placeholder="https://example.com/avatar.jpg"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
-                  />
-                  <div className="mt-3 flex items-center gap-3">
-                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 cursor-pointer transition-colors">
-                      <Upload className="h-4 w-4" />
-                      {uploadingField === 'avatar_url' ? 'Uploading...' : 'Upload Profile Photo'}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleImageSelect('avatar_url', e.target.files?.[0])}
-                      />
-                    </label>
+                
+                {uploadingField === 'avatar_url' && (
+                  <div className="absolute inset-0 bg-white/80 rounded-3xl flex items-center justify-center">
+                    <div className="h-8 w-8 border-3 border-red-600 border-t-transparent rounded-full animate-spin" />
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Enter a URL for your profile picture</p>
+                )}
+              </div>
+              
+              <div className="flex flex-col gap-3">
+                <h3 className="text-lg font-bold text-gray-900">Profile Picture</h3>
+                <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
+                  A professional photo helps you build trust and connect with potential collaborators.
+                </p>
+                <div className="flex gap-3 mt-1">
+                  <label className="bg-red-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer hover:bg-red-700 transition-all shadow-md inline-flex items-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    Upload Photo
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageSelect('avatar_url', e.target.files?.[0])} />
+                  </label>
+                  {formData.avatar_url && (
+                    <button type="button" onClick={() => handleImageDelete('avatar_url')} className="bg-gray-100 text-gray-600 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-200 transition-all border border-gray-200 inline-flex items-center gap-2">
+                      <Trash2 className="h-4 w-4" />
+                      Remove
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

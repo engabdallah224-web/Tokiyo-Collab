@@ -18,8 +18,17 @@ import {
   updateDoc,
   setDoc,
   deleteDoc,
+  documentId,
+  getCountFromServer,
 } from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
+import {
+  ref,
+  uploadBytes,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
+import { db, auth, storage } from '../config/firebase';
 
 const PROJECTS_COLLECTION = 'projects';
 const USERS_COLLECTION = 'users';
@@ -41,13 +50,21 @@ export const createProjectInFirestore = async (projectData) => {
     ...projectData,
     owner_id: uid,
     current_team_size: 1,
-    status: 'recruiting',
+    status: projectData.status || 'recruiting',
     created_at: now,
     updated_at: now,
+    member_ids: [uid], // Automatically add creator as first member
+    application_count: 0
   };
 
-  const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), docData);
-  return { id: docRef.id, ...docData };
+  try {
+    const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), docData);
+    console.log('✅ Project created in Firestore with ID:', docRef.id);
+    return { id: docRef.id, ...docData };
+  } catch (err) {
+    console.error('❌ Firestore addDoc failed:', err);
+    throw err;
+  }
 };
 
 // ─── Direct Messages ─────────────────────────────────────────────────────────
@@ -196,7 +213,7 @@ const enrichProjectsWithOwners = async (projects) => {
     await Promise.all(
       batches.map(async (batch) => {
         try {
-          const q = query(collection(db, USERS_COLLECTION), where('__name__', 'in', batch));
+          const q = query(collection(db, USERS_COLLECTION), where(documentId(), 'in', batch));
           const snap = await getDocs(q);
           snap.docs.forEach((d) => {
             userProfileCache.set(d.id, { uid: d.id, ...d.data() });
@@ -240,43 +257,47 @@ const enrichProjectsWithOwners = async (projects) => {
  */
 export const fetchProjects = async ({ status, category, difficulty, limitCount = 50 } = {}) => {
   try {
+    console.log('🔍 FETCH_DEBUG: Starting fetch with filters:', { status, category, difficulty });
     let q = collection(db, PROJECTS_COLLECTION);
+    
+    // Check if we can even reach the collection
+    const rawSnapshot = await getDocs(q);
+    console.log(`🔍 FETCH_DEBUG: Raw collection count in Firestore: ${rawSnapshot.size}`);
+
     const constraints = [];
-
-    if (status && status !== 'all') constraints.push(where('status', '==', status));
-    if (category) constraints.push(where('category', '==', category));
-    if (difficulty) constraints.push(where('difficulty', '==', difficulty));
-
-    // Use simple orderBy only when no compound filters (avoids index requirement)
-    if (constraints.length === 0) {
-      constraints.push(orderBy('created_at', 'desc'));
+    if (status && status !== 'all' && status !== '') {
+      constraints.push(where('status', '==', status));
     }
+    if (category && category !== '') constraints.push(where('category', '==', category));
+    if (difficulty && difficulty !== '') constraints.push(where('difficulty', '==', difficulty));
     constraints.push(limit(limitCount));
 
-    q = query(q, ...constraints);
-    const snapshot = await getDocs(q);
+    const finalQuery = query(q, ...constraints);
+    const snapshot = await getDocs(finalQuery);
+    console.log(`🔍 FETCH_DEBUG: Filtered results count: ${snapshot.size}`);
 
     let projects = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-    // Sort in-memory when we skipped orderBy
-    if (constraints.length > 0 && !constraints.some((c) => c.type === 'orderBy')) {
-      projects.sort((a, b) => ((b.created_at || '') > (a.created_at || '') ? 1 : -1));
-    }
+    projects.sort((a, b) => {
+      const dateA = new Date(a.created_at || 0).getTime();
+      const dateB = new Date(b.created_at || 0).getTime();
+      return dateB - dateA;
+    });
 
     projects = await enrichProjectsWithOwners(projects);
     return projects;
-  } catch {
-    // Last resort: fetch all without filters and filter in JS
-    const snapshot = await getDocs(collection(db, PROJECTS_COLLECTION));
-    let projects = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-    if (status && status !== 'all') projects = projects.filter((p) => p.status === status);
-    if (category) projects = projects.filter((p) => p.category === category);
-    if (difficulty) projects = projects.filter((p) => p.difficulty === difficulty);
-
-    projects.sort((a, b) => ((b.created_at || '') > (a.created_at || '') ? 1 : -1));
-    projects = await enrichProjectsWithOwners(projects);
-    return projects.slice(0, limitCount);
+  } catch (err) {
+    console.error('❌ FETCH_DEBUG_ERROR:', err);
+    // Emergency Fallback: Just get everything
+    try {
+      const emergencySnap = await getDocs(collection(db, PROJECTS_COLLECTION));
+      console.log(`🔍 FETCH_DEBUG: Emergency fetch count: ${emergencySnap.size}`);
+      let projects = emergencySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      projects.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      return await enrichProjectsWithOwners(projects.slice(0, limitCount));
+    } catch (criticalErr) {
+      console.error('❌ CRITICAL_FETCH_ERROR:', criticalErr);
+      return [];
+    }
   }
 };
 
@@ -735,6 +756,8 @@ export const createUserProfileInFirestore = async (uid, profileData) => {
   );
 };
 
+import { uploadAPI } from './api';
+
 export const syncFirebaseProfileToFirestore = async (firebaseUser) => {
   if (!firebaseUser?.uid) return;
 
@@ -749,6 +772,63 @@ export const syncFirebaseProfileToFirestore = async (firebaseUser) => {
     },
     { merge: true }
   );
+};
+
+/**
+ * Upload a file via backend (Cloudinary) and update the user's profile URL in Firestore.
+ */
+export const uploadUserProfileImage = async (uid, file, type = 'profile') => {
+  try {
+    console.log(`🚀 Starting ${type} upload via backend profile API...`);
+    
+    // Use the dedicated profile upload API
+    const response = await uploadAPI.uploadProfileImage(file);
+    
+    // Backend returns the URL in data.url
+    const downloadURL = response.data?.url;
+    
+    if (!downloadURL) {
+      throw new Error('Upload succeeded but no URL was returned');
+    }
+
+    console.log('✅ Upload successful via backend:', downloadURL);
+    
+    // Update Firestore
+    const field = type === 'profile' ? 'avatar_url' : 'banner_url';
+    await updateDoc(doc(db, USERS_COLLECTION, uid), {
+      [field]: downloadURL,
+      [`${field}_cloudinary_id`]: response.data?.cloudinary_id || null,
+      updated_at: new Date().toISOString(),
+    });
+    
+    return downloadURL;
+  } catch (err) {
+    console.error(`❌ Error uploading ${type} image:`, err);
+    const errorMsg = err.response?.data?.detail || err.message || 'Upload failed';
+    throw new Error(errorMsg);
+  }
+};
+
+/**
+ * Delete a user profile image from Firestore.
+ */
+export const deleteUserProfileImage = async (uid, type = 'profile') => {
+  try {
+    const field = type === 'profile' ? 'avatar_url' : 'banner_url';
+    const cloudinaryIdField = `${field}_cloudinary_id`;
+    
+    // Update Firestore to remove URLs and IDs
+    await updateDoc(doc(db, USERS_COLLECTION, uid), {
+      [field]: null,
+      [cloudinaryIdField]: null,
+      updated_at: new Date().toISOString(),
+    });
+    
+    return true;
+  } catch (err) {
+    console.error(`❌ Error deleting ${type} image:`, err);
+    throw err;
+  }
 };
 
 // ─── User profile ─────────────────────────────────────────────────────────────
@@ -1173,9 +1253,6 @@ export const deleteTaskFromFirestore = async (taskId) => {
 
 // ─── Repository Files ─────────────────────────────────────────────────────────
 
-import { storage } from '../config/firebase';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-
 const REPO_FILES_COLLECTION = 'repo_files';
 
 /**
@@ -1189,7 +1266,7 @@ export const uploadRepoFile = ({ projectId, file, onProgress }) => {
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const path = `repo_files/${projectId}/${Date.now()}_${safeName}`;
-    const sRef = storageRef(storage, path);
+    const sRef = ref(storage, path);
 
     const uploadTask = uploadBytesResumable(sRef, file);
 
@@ -1512,108 +1589,46 @@ export const deleteProjectComment = async (commentId) => {
 
 const DOC_FILES_COLLECTION = 'document_files';
 
-// Convert a File to a base64 data-URL (fallback when Firebase Storage is unavailable)
-const fileToDataUrl = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsDataURL(file);
-  });
-
+/**
+ * Upload a document to Cloudinary via backend and save metadata to Firestore.
+ */
 export const uploadDocumentFile = ({ projectId, file, onProgress }) => {
   return new Promise(async (resolve, reject) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return reject(new Error('Not authenticated'));
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) throw new Error('Not authenticated');
 
-    // Files > 700 KB cannot be stored in Firestore (1 MB doc limit with base64 overhead)
-    const MAX_FIRESTORE_BYTES = 700 * 1024;
+      onProgress?.(30);
+      
+      const response = await uploadAPI.uploadFile(file, projectId);
+      const data = response.data;
+      
+      onProgress?.(80);
 
-    const saveToFirestore = async (downloadURL, storagePath = null) => {
       const uploader = await fetchUserProfile(uid);
+      
+      // Save metadata to Firestore
       const docRef = await addDoc(collection(db, DOC_FILES_COLLECTION), {
         project_id: projectId,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        storage_path: storagePath,
-        download_url: downloadURL,
+        name: data.file_name || file.name,
+        size: data.file_size || file.size,
+        type: data.content_type || file.type,
+        cloudinary_id: data.cloudinary_id,
+        download_url: data.file_url,
         uploaded_by: uid,
         uploader_name: uploader?.full_name || 'Unknown',
         created_at: new Date().toISOString(),
       });
-      return { id: docRef.id, download_url: downloadURL, name: file.name };
-    };
 
-    // ── Try Firebase Storage first ──
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `document_files/${projectId}/${Date.now()}_${safeName}`;
-    const sRef = storageRef(storage, path);
-
-    // Timeout: if no progress after 8 s, assume Storage is blocked → fallback
-    let progressReceived = false;
-    const storageTimeout = setTimeout(async () => {
-      if (!progressReceived) {
-        uploadTask.cancel();
-        // Fallback: store as data-URL in Firestore
-        try {
-          if (file.size > MAX_FIRESTORE_BYTES) {
-            reject(new Error(`File too large for offline storage (max ~700 KB). Please configure Firebase Storage rules to allow uploads.`));
-            return;
-          }
-          onProgress?.(30);
-          const dataUrl = await fileToDataUrl(file);
-          onProgress?.(80);
-          const result = await saveToFirestore(dataUrl, null);
-          onProgress?.(100);
-          resolve(result);
-        } catch (err) {
-          reject(err);
-        }
-      }
-    }, 8000);
-
-    const uploadTask = uploadBytesResumable(sRef, file);
-
-    uploadTask.on(
-      'state_changed',
-      (snap) => {
-        progressReceived = true;
-        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-        onProgress?.(pct);
-      },
-      async (err) => {
-        // Storage error → fallback to data-URL in Firestore
-        clearTimeout(storageTimeout);
-        if (err.code === 'storage/canceled') return; // already handled by timeout
-        try {
-          if (file.size > MAX_FIRESTORE_BYTES) {
-            reject(new Error(`File too large for offline storage (max ~700 KB). Please configure Firebase Storage rules.`));
-            return;
-          }
-          onProgress?.(30);
-          const dataUrl = await fileToDataUrl(file);
-          onProgress?.(80);
-          const result = await saveToFirestore(dataUrl, null);
-          onProgress?.(100);
-          resolve(result);
-        } catch (e) {
-          reject(e);
-        }
-      },
-      async () => {
-        clearTimeout(storageTimeout);
-        try {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const result = await saveToFirestore(downloadURL, path);
-          resolve(result);
-        } catch (err) {
-          reject(err);
-        }
-      }
-    );
+      onProgress?.(100);
+      resolve({ id: docRef.id, download_url: data.file_url, name: file.name });
+    } catch (err) {
+      console.error('❌ Document upload failed:', err);
+      reject(err);
+    }
   });
 };
+
 
 export const subscribeToDocumentFiles = (projectId, onFiles) => {
   const q = query(
@@ -1642,6 +1657,33 @@ export const deleteDocumentFile = async (fileId, storagePath) => {
   try {
     await deleteObject(storageRef(storage, storagePath));
   } catch { /* ignore */ }
+};/**
+ * Subscribe to global statistics for the Home page (Real-time)
+ */
+export const subscribeToGlobalStats = (callback) => {
+  const stats = { users: 0, projects: 0, collabs: 0, successRate: 98 };
+
+  // Listen to users count
+  const unsubUsers = onSnapshot(collection(db, USERS_COLLECTION), (snap) => {
+    stats.users = snap.size || 0; // Strictly from database
+    callback({ ...stats });
+  });
+
+  // Listen to projects count
+  const unsubProjects = onSnapshot(collection(db, PROJECTS_COLLECTION), (snap) => {
+    stats.projects = snap.size || 0;
+    callback({ ...stats });
+  });
+
+  // Listen to collaborations count
+  const unsubCollabs = onSnapshot(collection(db, APPLICATIONS_COLLECTION), (snap) => {
+    stats.collabs = snap.size || 0;
+    callback({ ...stats });
+  });
+
+  return () => {
+    unsubUsers();
+    unsubProjects();
+    unsubCollabs();
+  };
 };
-
-

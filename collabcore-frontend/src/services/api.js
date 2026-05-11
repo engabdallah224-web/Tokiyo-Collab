@@ -267,6 +267,18 @@ export const uploadAPI = {
       },
     });
   },
+
+  // Upload profile/banner image to Cloudinary
+  uploadProfileImage: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    return api.post('/api/upload/profile', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
 };
 
 // ============ MEETINGS & CALLS ============

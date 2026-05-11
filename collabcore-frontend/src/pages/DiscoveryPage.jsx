@@ -14,7 +14,7 @@ const DiscoveryPage = () => {
   const { user } = useAuth();
   const [filters, setFilters] = useState({
     search: '',
-    status: 'recruiting',
+    status: 'all', // Changed from 'recruiting' to 'all' to show everything by default
     skills: [],
     category: '',
     difficulty: ''
@@ -45,7 +45,7 @@ const DiscoveryPage = () => {
         difficulty: filters.difficulty,
         limitCount: 100,
       }),
-    staleTime: 60000,
+    staleTime: 0,
     retry: 1,
     refetchInterval: 10000,
     refetchOnWindowFocus: true,
@@ -59,29 +59,37 @@ const DiscoveryPage = () => {
     total_students: 0,
   };
 
-  // Filter projects based on search and exclude user's own projects
+  // Filter projects based on search and handle visibility
   const filteredProjects = projects.filter((project) => {
-    // Apply search filter
+    // 1. Basic validation
+    if (!project || !project.id) return false;
+
+    // 2. Apply search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
-      return (
+      const matchesSearch = 
         project.title?.toLowerCase().includes(searchLower) ||
         project.description?.toLowerCase().includes(searchLower) ||
         project.required_skills?.some(skill => skill.toLowerCase().includes(searchLower)) ||
-        project.tags?.some(tag => tag.toLowerCase().includes(searchLower))
-      );
+        project.tags?.some(tag => tag.toLowerCase().includes(searchLower));
+      
+      if (!matchesSearch) return false;
     }
+    
     return true;
   });
 
   // Sort projects
   const sortedProjects = [...filteredProjects].sort((a, b) => {
+    const dateA = new Date(a.created_at || 0).getTime();
+    const dateB = new Date(b.created_at || 0).getTime();
+    
     if (sortBy === 'recent') {
-      return new Date(b.created_at) - new Date(a.created_at);
+      return dateB - dateA;
     } else if (sortBy === 'popular') {
       return (b.current_team_size || 0) - (a.current_team_size || 0);
     }
-    return 0; // match sorting would require ML in the future
+    return 0;
   });
 
   const containerVariants = {

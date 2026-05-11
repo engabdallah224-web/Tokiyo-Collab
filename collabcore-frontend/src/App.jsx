@@ -56,7 +56,7 @@ function AppContent() {
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-white">
         <Header />
-        <main className="flex-grow">
+        <main className="flex-grow pt-20">
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Home />} />

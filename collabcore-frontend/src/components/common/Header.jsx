@@ -1,17 +1,38 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, LogOut, User, Bell, Sparkles, Menu, X } from 'lucide-react';
+import { 
+  Users, 
+  LogOut, 
+  User, 
+  Bell, 
+  Menu, 
+  X, 
+  Search, 
+  Compass, 
+  Layout,
+  PlusCircle,
+  ChevronRight
+} from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { subscribeToNotifications } from '../../services/firestoreService';
 
 const Header = () => {
   const { isAuthenticated, user, logout } = useAuth();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
   const uid = user?.uid || user?.id || null;
 
-  // Real-time notification badge — updates instantly when a new notification arrives
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   useEffect(() => {
     if (!uid) { setUnreadCount(0); return; }
     const unsub = subscribeToNotifications(uid, (items) => {
@@ -20,244 +41,219 @@ const Header = () => {
     return unsub;
   }, [uid]);
 
-  const handleLogout = async () => {
-    await logout();
+  useEffect(() => {
     setMobileMenuOpen(false);
-  };
+  }, [location]);
+
+  const navLinks = [
+    { name: 'Discover', path: '/discovery', icon: Compass },
+    { name: 'Projects', path: '/projects', icon: Layout },
+    { name: 'Search', path: '/search', icon: Search },
+  ];
 
   return (
-    <motion.header 
-      className="bg-black/95 backdrop-blur-lg border-b border-red-900/50 sticky top-0 z-50 shadow-lg shadow-red-900/20"
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+    <header 
+      className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 bg-black/80 backdrop-blur-md ${
+        scrolled 
+          ? 'border-b border-white/10 py-3 shadow-[0_4px_30px_rgba(0,0,0,0.5)]' 
+          : 'py-5'
+      }`}
     >
-      <div className="container mx-auto px-4 py-3">
-        <div className="flex items-center justify-between gap-4">
+      <div className="container mx-auto px-4 md:px-6">
+        <nav className="flex items-center justify-between">
           {/* Logo */}
-          <Link to="/" className="flex items-center space-x-2 md:space-x-3 group flex-shrink-0">
-            <motion.div
+          <Link to="/" className="flex items-center space-x-3 group flex-shrink-0">
+            <motion.div 
+              whileHover={{ scale: 1.1, rotate: 5 }}
               className="relative"
-              whileHover={{ rotate: 360 }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
             >
-              <div className="absolute inset-0 bg-red-600 rounded-xl blur-lg opacity-30 group-hover:opacity-50 transition-opacity"></div>
-              <div className="relative bg-red-600 p-1.5 md:p-2 rounded-lg md:rounded-xl shadow-lg">
-                <Users className="h-5 w-5 md:h-6 md:w-6 text-white" />
+              <div className="absolute inset-0 bg-red-600 rounded-xl blur-md opacity-40 group-hover:opacity-60 transition-opacity"></div>
+              <div className="relative bg-gradient-to-br from-red-600 to-red-800 p-2 rounded-xl shadow-[0_0_15px_rgba(220,38,38,0.4)] border border-red-500/30">
+                <Users className="h-6 w-6 text-white" />
               </div>
             </motion.div>
-            <div className="flex items-center">
-              <motion.span
-                className="text-lg md:text-2xl font-bold"
-                animate={{ color: ['#ffffff', '#ef4444', '#ff6b6b', '#ffffff'] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              >
-                CollabCore
-              </motion.span>
-              <motion.div
-                animate={{ 
-                  rotate: [0, 10, -10, 0],
-                  scale: [1, 1.2, 1],
-                }}
-                transition={{ 
-                  duration: 2,
-                  repeat: Infinity,
-                  repeatDelay: 3,
-                }}
-                className="hidden sm:block"
-              >
-                <Sparkles className="h-3 w-3 md:h-4 md:w-4 text-red-500 ml-1" />
-              </motion.div>
+            <div className="flex flex-col">
+              <span className="text-2xl font-black tracking-tighter text-white group-hover:text-red-500 transition-colors">
+                Collab<span className="text-red-600">Core</span>
+              </span>
+              <div className="h-1 w-0 group-hover:w-full bg-red-600 rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(220,38,38,0.6)]"></div>
             </div>
           </Link>
 
           {/* Desktop Navigation */}
-          {isAuthenticated ? (
-            <>
-              <motion.nav 
-                className="hidden lg:flex items-center space-x-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
+          <div className="hidden md:flex items-center space-x-8">
+            {navLinks.map((link) => (
+              <Link 
+                key={link.path}
+                to={link.path}
+                className={`text-sm font-bold uppercase tracking-widest transition-all hover:text-red-600 ${
+                  location.pathname === link.path ? 'text-red-600' : 'text-gray-400'
+                }`}
               >
-              <motion.div whileHover={{ y: -2 }} whileTap={{ y: 0 }}>
-                <Link
-                  to="/discovery"
-                  className="text-white hover:text-red-500 font-medium transition-all"
-                >
-                  Discover
-                </Link>
-              </motion.div>
-              <motion.div whileHover={{ y: -2 }} whileTap={{ y: 0 }}>
-                <Link
-                  to="/projects"
-                  className="text-white hover:text-red-500 font-medium transition-all"
-                >
-                  Projects
-                </Link>
-              </motion.div>
-              <motion.div whileHover={{ y: -2 }} whileTap={{ y: 0 }}>
-                <Link
-                  to="/search"
-                  className="text-white hover:text-red-500 font-medium transition-all"
-                >
-                  Search
-                </Link>
-              </motion.div>
+                {link.name}
+              </Link>
+            ))}
+          </div>
 
-                <div className="flex items-center space-x-2 ml-4 border-l border-red-900 pl-4">
-                <motion.div 
-                  whileHover={{ scale: 1.1, rotate: 15 }} 
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <Link
-                    to="/notifications"
-                    className="relative p-2 hover:bg-red-900/50 rounded-xl transition-all focus:outline-none"
-                  >
-                    <Bell className="h-5 w-5 text-white" />
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-3 md:space-x-5">
+            {isAuthenticated ? (
+              <>
+                <div className="hidden md:flex items-center space-x-4 border-r border-white/10 pr-5">
+                  <Link to="/notifications" className="relative text-gray-400 hover:text-white">
+                    <Bell className="h-5 w-5" />
                     {unreadCount > 0 && (
-                      <motion.span 
-                        className="absolute top-1 right-1 bg-red-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold shadow-lg"
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ type: 'spring', stiffness: 500, delay: 0.5 }}
-                        whileHover={{ scale: 1.2 }}
-                      >
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </motion.span>
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-600 rounded-full"></span>
                     )}
                   </Link>
-                </motion.div>
-
-                <motion.div 
-                  whileHover={{ scale: 1.1 }} 
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <Link
-                    to="/profile"
-                    className="p-2 hover:bg-red-900/50 rounded-xl transition-all focus:outline-none"
-                  >
-                    <User className="h-5 w-5 text-white" />
+                  <Link to="/profile" className="text-gray-400 hover:text-white">
+                    <User className="h-5 w-5" />
                   </Link>
-                </motion.div>
-
-                <motion.button
-                  onClick={handleLogout}
-                  className="p-2 hover:bg-red-600/50 rounded-xl transition-all group focus:outline-none"
-                  title="Logout"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
+                </div>
+                <motion.button 
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={logout}
+                  className="bg-white/5 hover:bg-red-600 text-white p-2.5 rounded-xl border border-white/10 transition-all"
                 >
-                  <LogOut className="h-5 w-5 text-white group-hover:text-red-400 transition-colors" />
+                  <LogOut className="h-5 w-5" />
                 </motion.button>
+              </>
+            ) : (
+              <div className="flex items-center space-x-3">
+                <Link to="/login">
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    className="text-gray-400 hover:text-white font-bold text-sm px-4"
+                  >
+                    Login
+                  </motion.button>
+                </Link>
+                <Link to="/register">
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    className="bg-red-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-red-600/20"
+                  >
+                    Join
+                  </motion.button>
+                </Link>
               </div>
-            </motion.nav>
+            )}
 
-            {/* Mobile Menu Button */}
-            <motion.button
+            {/* Mobile Toggle */}
+            <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 hover:bg-red-900/50 rounded-lg transition-all focus:outline-none"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              className="md:hidden text-white p-2 hover:bg-white/10 rounded-xl transition-colors"
             >
-              {mobileMenuOpen ? (
-                <X className="h-6 w-6 text-white" />
-              ) : (
-                <Menu className="h-6 w-6 text-white" />
-              )}
-            </motion.button>
-          </>
-          ) : (
-            <motion.nav 
-              className="flex items-center gap-2 md:gap-3"
+              {mobileMenuOpen ? <X className="h-7 w-7" /> : <Menu className="h-7 w-7" />}
+            </button>
+          </div>
+        </nav>
+      </div>
+
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden"
+            />
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 bottom-0 w-[85%] max-w-[340px] bg-black border-l border-white/10 z-[100] md:hidden p-8 flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.8)]"
             >
-              <Link
-                to="/login"
-                className="inline-block text-white hover:text-red-500 font-semibold transition-all px-3 md:px-5 py-2 md:py-2.5 rounded-lg hover:bg-red-900/30 text-sm md:text-base whitespace-nowrap"
-              >
-                Login
-              </Link>
-              <Link
-                to="/register"
-                className="inline-block bg-red-600 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-lg font-semibold hover:bg-red-700 transition-all shadow-lg hover:shadow-xl text-sm md:text-base whitespace-nowrap"
-              >
-                Sign Up
-              </Link>
-            </motion.nav>
-          )}
-        </div>
+              <div className="flex items-center justify-between mb-10">
+                <span className="text-xl font-black text-white tracking-widest uppercase">Navigation</span>
+                <button onClick={() => setMobileMenuOpen(false)} className="text-gray-400 hover:text-white p-2">
+                  <X className="h-7 w-7" />
+                </button>
+              </div>
 
-        {/* Mobile Menu */}
-        <AnimatePresence>
-          {isAuthenticated && mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="lg:hidden overflow-hidden border-t border-red-900 mt-3 bg-black"
-            >
-              <div className="py-4 space-y-3">
-                <Link
-                  to="/discovery"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block px-4 py-2 text-white hover:bg-red-900/50 rounded-lg transition-all font-medium"
-                >
-                  Discover
-                </Link>
-                <Link
-                  to="/projects"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block px-4 py-2 text-white hover:bg-red-900/50 rounded-lg transition-all font-medium"
-                >
-                  My Projects
-                </Link>
-                <Link
-                  to="/search"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block px-4 py-2 text-white hover:bg-red-900/50 rounded-lg transition-all font-medium"
-                >
-                  Search
-                </Link>
-                
-                <div className="border-t border-red-900 pt-3 mt-3 space-y-3">
-                  <Link
-                    to="/notifications"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center justify-between px-4 py-2 text-white hover:bg-red-900/50 rounded-lg transition-all"
+              {/* Navigation Links - Clean minimalist style */}
+              <div className="flex flex-col space-y-2">
+                {navLinks.map((link) => (
+                  <Link 
+                    key={link.path}
+                    to={link.path}
+                    className={`flex items-center justify-between py-4 px-2 rounded-xl transition-all ${
+                      location.pathname === link.path 
+                        ? 'text-red-600' 
+                        : 'text-gray-400 hover:text-white hover:pl-4'
+                    }`}
                   >
-                    <span className="font-medium">Notifications</span>
-                    {unreadCount > 0 && (
-                      <span className="bg-red-600 text-white text-xs rounded-full h-5 min-w-5 px-1 flex items-center justify-center font-semibold">
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
+                    <div className="flex items-center space-x-5">
+                      <link.icon className={`h-6 w-6 ${location.pathname === link.path ? 'text-red-600' : 'text-gray-500'}`} />
+                      <span className="font-black text-xl tracking-tight">{link.name}</span>
+                    </div>
+                    {location.pathname === link.path && (
+                      <motion.div layoutId="mobile-active" className="w-1.5 h-1.5 bg-red-600 rounded-full shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
                     )}
                   </Link>
-                  <Link
-                    to="/profile"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-2 text-white hover:bg-red-900/50 rounded-lg transition-all font-medium"
+                ))}
+              </div>
+
+              {/* User Actions Section */}
+              <div className="mt-8 pt-8 border-t border-white/5 space-y-2">
+                {isAuthenticated ? (
+                  <>
+                    <Link 
+                      to="/notifications" 
+                      className="flex items-center justify-between py-4 px-2 text-gray-400 hover:text-white transition-all"
+                    >
+                      <div className="flex items-center space-x-5">
+                        <Bell className="h-6 w-6 text-gray-500" />
+                        <span className="font-bold text-lg">Notifications</span>
+                      </div>
+                      {unreadCount > 0 && (
+                        <span className="bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
+                    </Link>
+
+                    <Link 
+                      to="/profile" 
+                      className="flex items-center space-x-5 py-4 px-2 text-gray-400 hover:text-white transition-all"
+                    >
+                      <User className="h-6 w-6 text-gray-500" />
+                      <span className="font-bold text-lg">My Profile</span>
+                    </Link>
+                  </>
+                ) : (
+                  <Link 
+                    to="/login" 
+                    className="block bg-red-600 text-white text-center py-4 rounded-2xl font-black text-lg shadow-lg shadow-red-600/20 mt-4"
                   >
-                    Profile
+                    Login / Join Now
                   </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-red-500 hover:bg-red-900/50 rounded-lg transition-all font-medium"
+                )}
+              </div>
+
+              {/* Sign Out at the very bottom */}
+              {isAuthenticated && (
+                <div className="mt-auto pt-10">
+                  <button 
+                    onClick={logout} 
+                    className="flex items-center space-x-5 py-5 px-6 w-full rounded-2xl bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white transition-all group"
                   >
-                    Logout
+                    <LogOut className="h-6 w-6 group-hover:rotate-12 transition-transform" />
+                    <span className="font-black text-lg">Sign Out</span>
                   </button>
                 </div>
-              </div>
+              )}
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.header>
+          </>
+        )}
+      </AnimatePresence>
+    </header>
   );
 };
 
 export default Header;
-

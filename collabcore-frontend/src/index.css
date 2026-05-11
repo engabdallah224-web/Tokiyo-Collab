@@ -153,8 +153,3 @@ a:focus {
   transform: scale(1.02);
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
 }
-
-/* Smooth transitions for all interactive elements */
-* {
-  transition: all 0.2s ease-in-out;
-}
